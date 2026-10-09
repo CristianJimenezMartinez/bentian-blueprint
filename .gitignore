@@ -1,0 +1,28 @@
+# =========================================================================
+# BENTIAN WORKSPACE / BLUEPRINT - ROOT GITIGNORE
+# =========================================================================
+
+# Repositorios independientes dentro del ecosistema Bentian
+erp-bridge/
+cristianjm/
+bentian-status/
+Bentian_Conector_Factusol_Node_TS/
+API/
+ERP Bridge - proyect/
+scripts/
+
+# Archivos binarios pesados y bases de datos locales
+*.rar
+*.exe
+*.msi
+*.accdb
+*.zip
+*.tar.gz
+*.7z
+
+# Archivos de sistema y editores
+.DS_Store
+Thumbs.db
+*.tmp
+.vscode/
+.idea/
