@@ -223,4 +223,12 @@
 * **Blindaje del Cálculo de MRR/ARR:**
   - El endpoint de analítica financiera y KPIs (`/admin/licensing/overview`) calcula el volumen de licencias de pago activas (`active_paid`) exigiendo rigurosamente `status = 'active'`, `billing_status = 'ACTIVE'` y la presencia verificada de una suscripción o sesión válida de Stripe (`(stripe_subscription_id IS NOT NULL OR stripe_session_id IS NOT NULL)`). Si `active_paid === 0`, las métricas ARR y MRR deben reportar exactamente 0 €.
 
+---
+
+## 21. Arquitectura Polimórfica Multi-ERP y Modelo de Aprovisionamiento Exclusivo (Single Active ERP)
+* **Contrato Canónico `IErpConnector`:** Todo conector o adaptador de software ERP debe desacoplarse del motor de sincronización mediante la interfaz `IErpConnector` y gestionarse a través de `ErpProviderRegistry`. Queda prohibido acoplar `LocalSyncEngine` directamente a motores de bases de datos específicos fuera del patrón Strategy.
+* **Prohibición de Coexistencia Concurrente Destructiva:** En tiempo de ejecución solo puede existir **UN** proveedor de ERP activo a la vez (`softwareErp.activeProvider`). El Agente debe desconectar limpiamente el conector inactivo antes de enlazar el nuevo, garantizando cero colisiones de stock, cero sobreventas y cero duplicidad de pedidos sobre la tienda online.
+* **Persistencia Aislada y Anti-Wiping en AppData:** Los parámetros, rutas NAS/UNC, series y tarifas de cada ERP deben preservarse de forma independiente en `softwareErp.providers.<erpId>` dentro de `%APPDATA%\Bentian Agent\agent-config.json`. Queda terminantemente prohibido sobrescribir o vaciar la configuración de un ERP inactivo al conmutar de software en la GUI o en la API.
+
+
 
