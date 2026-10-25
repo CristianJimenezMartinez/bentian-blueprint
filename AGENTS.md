@@ -77,13 +77,20 @@
 
 ## 9. Blindaje y Congelación de Módulos ("Code Freeze & Sealed Modules")
 * **PROHIBICIÓN ESTRICTA:** Queda terminantemente prohibido modificar, refactorizar, renombrar o eliminar cualquier archivo listado como `status: "FROZEN"` en `ARCHITECTURE_MANIFEST.json` o documentado como sellado en `MODULES.md`.
-* **Módulos Sellados Oficiales:**
-  1. `packages/connectors/factusol/src` (Conector Factusol OLEDB, transacciones y motor relacional).
-  2. `packages/core/src/license` (Licencias, tokens HMAC y HWID).
-  3. `packages/core/src/update/update-signer.ts` (Firmas asimétricas Ed25519).
-  4. `apps/agent/src/update/update.swapper.ts` (UpdateSwapper atómico en Windows).
-  5. `apps/agent/src/config/config.manager.ts` (Persistencia en AppData y Anti-Wiping NAS).
-  6. `apps/agent/src/gui/tray/BentianTray.cs` y `apps/agent/src/gui/window-launcher.ts` (Selector nativo OpenFileDialog y Launcher de escritorio).
+* **Módulos Sellados Oficiales (13 Módulos `FROZEN` con Hash SHA-256 en Gate 7):**
+  1. `packages/connectors/factusol/src` (`connectors.factusol`: Conector Factusol OLEDB, transacciones y motor relacional).
+  2. `packages/core/src/license` (`core.licensing`: Licencias, tokens HMAC y HWID).
+  3. `packages/core/src/update/update-signer.ts` (`core.update.signer`: Firmas asimétricas Ed25519).
+  4. `apps/agent/src/update/update.swapper.ts` y `update-script.builder.ts` (`agent.update.swapper`: UpdateSwapper atómico en Windows).
+  5. `apps/agent/src/config/config.manager.ts` y `config-storage.helper.ts` (`agent.config.persistence`: Persistencia en AppData y Anti-Wiping NAS).
+  6. `apps/agent/src/gui/tray/BentianTray.cs` y `apps/agent/src/gui/window-launcher.ts` (`agent.gui.native_dialog`: Selector nativo OpenFileDialog y Launcher de escritorio).
+  7. `apps/agent/src/erp` (`agent.erp`: Motor Multi-ERP Polimórfico, `SqlServerBaseAdapter`, perfiles Factusol/SimplyGest/Ágora POS/Sage 50/a3ERP y Modo Evaluación Sandbox).
+  8. `packages/connectors/woocommerce/src` (`connectors.woocommerce`: Conector WooCommerce REST API v3, variantes y stock disponible `DISSTO`).
+  9. `packages/connectors/simplygest/src` y `apps/agent/src/services/sql-erp-enhancer.service.ts` (`connectors.simplygest`: Conector SimplyGest Triple-Modo `.dat`/`.mdb`/REST y transacciones T-SQL atómicas).
+  10. `apps/agent/src/detector.ts` y `apps/agent/src/factusol/factusol.resolver.ts` (`agent.factusol.resolver_detector`: Escaneo de unidades mapeadas `HKCU\Network` UAC, resolución UNC y directorio padre limpio para `OpenFileDialog`).
+  11. `apps/agent/src/lifecycle/config-applier.service.ts`, `apps/agent/src/status/status-aggregator.service.ts` y `apps/agent/src/license/license.service.ts` (`agent.lifecycle.zero_loss`: Guardado completo Zero-Loss, caché reactiva de licencia y auto-recuperación de token).
+  12. `apps/agent/src/gui/gui-server.ts` y `apps/agent/src/gui/router/mini-router.ts` (`agent.gui.server_security`: Servidor local en puerto fijo inmutable `39281`, tolerancia `TIME_WAIT` y blindaje Anti-CSRF).
+  13. `apps/agent/src/sync/image-sync.service.ts` y `apps/agent/src/sync/universal-erp-image.resolver.ts` (`agent.sync.images`: Sincronización incremental de imágenes con caché MD5 y resolutor Multi-ERP).
 * **Mecanismo de Extensión Obligatorio:** Si una nueva característica requiere interactuar con un módulo congelado, se debe extender exclusivamente mediante la capa superior (Decoradores, Adaptadores o Middleware), pero **JAMÁS** editar el código interno del módulo congelado.
 * **Integridad Criptográfica Inquebrantable:** El Quality Gate (`pnpm run quality:check`) incluye el Gate 7 que calcula el hash SHA-256 del árbol de cada módulo congelado. Cualquier alteración de un solo byte fallará inmediatamente la compilación impidiendo el commit o despliegue.
 
@@ -229,6 +236,41 @@
 * **Contrato Canónico `IErpConnector`:** Todo conector o adaptador de software ERP debe desacoplarse del motor de sincronización mediante la interfaz `IErpConnector` y gestionarse a través de `ErpProviderRegistry`. Queda prohibido acoplar `LocalSyncEngine` directamente a motores de bases de datos específicos fuera del patrón Strategy.
 * **Prohibición de Coexistencia Concurrente Destructiva:** En tiempo de ejecución solo puede existir **UN** proveedor de ERP activo a la vez (`softwareErp.activeProvider`). El Agente debe desconectar limpiamente el conector inactivo antes de enlazar el nuevo, garantizando cero colisiones de stock, cero sobreventas y cero duplicidad de pedidos sobre la tienda online.
 * **Persistencia Aislada y Anti-Wiping en AppData:** Los parámetros, rutas NAS/UNC, series y tarifas de cada ERP deben preservarse de forma independiente en `softwareErp.providers.<erpId>` dentro de `%APPDATA%\Bentian Agent\agent-config.json`. Queda terminantemente prohibido sobrescribir o vaciar la configuración de un ERP inactivo al conmutar de software en la GUI o en la API.
+
+---
+
+## 22. Blindaje Inquebrantable de Persistencia Instantánea y Cero Pérdida al Cerrar/Abrir (Zero-Loss Config Persistence)
+* **PROHIBICIÓN ESTRICTA DE DESCARTAR CONFIGURACIONES EN MEMORIA O RECARGAR LA VENTANA:**
+  - Queda terminantemente prohibido que cualquier acción del usuario en el GUI (seleccionar archivo en el diálogo nativo de Windows, resolver ruta `onblur`, probar conexión con Factusol/SimplyGest/Tienda Web, avanzar de paso en el Asistente o pulsar Guardar) deje de escribirse en `%APPDATA%\Bentian Agent\agent-config.json` por no haber activado aún la licencia o por cerrar la ventana antes del último paso.
+  - Queda prohibido que un código HTTP `403` de licencia dispare `window.location.reload()` en el frontend borrando los campos del formulario.
+* **Persistencia de Borrador Garantizada (`Zero-Loss Draft`):**
+  - En `SystemController.saveFullConfig`, incluso si la licencia aún no está activa y el endpoint devuelve `403` para impedir el arranque del bucle de sincronización, todos los campos enviados (`factusol`, `simplygest`, `universalBridge`, `woocommerce`, `channelType`, `erpType`, `syncRules`) deben guardarse atómicamente en `agent-config.json` preservando secretos enmascarados (`isSecretMaskedOrEmpty`).
+  - Asimismo, `FactusolController.openNativeFileDialog`, `FactusolController.testFactusol`, `FactusolController.resolvePath`, `SimplyGestController.openNativeFileDialog` y `ChannelController.testUniversalBridge`/`testWooCommerce` deben persistir inmediatamente en disco la ruta o URL seleccionada/probada.
+* **Orden Inmutable de Inicialización del GUI y Caché reactiva:**
+  - En `status.script.ts`, `updateFormInputs(currentStatus, forceFormSync)` debe ejecutarse **SIEMPRE ANTES** que `handleStatusUpdate(currentStatus)` para que ningún modal o asistente se abra jamás con los campos vacíos.
+  - En `StatusAggregatorService.getStatusDetails`, la caché `cachedLicenseVal` debe invalidarse de inmediato en cuanto `licenseService.getLicenseStatus().status` cambie, y `LicenseService.validateLicense()` debe auto-recuperar el token invocando `activateLicense(config.licenseKey)` si existe `licenseKey` en `agent-config.json` pero falta el token local.
+
+---
+
+## 23. Modularidad Estricta y Presupuesto Máximo por Archivo (`<= 250 LOC`)
+* **PROHIBICIÓN ESTRICTA DE ARCHIVOS MONOLÍTICOS ("God Files"):**
+  - Ningún módulo JavaScript, vista HTML, modal o layout del Cloud Dashboard (`apps/api/public/dashboard/{js,views,modals,layout}`) ni nuevos routers/servicios del software pueden superar las **250 líneas de código (`<= 250 LOC`)**.
+* **Aplicación y Bloqueo Automático:**
+  - El compilador del Dashboard (`apps/api/scripts/build-dashboard.ts` con `MAX_DASHBOARD_MODULE_LOC = 250`) y el Gate 1 del Quality Gate (`scripts/quality-gate.ts`) verifican automáticamente el número de líneas de cada componente modular y abortan la compilación si cualquier archivo de `apps/api/public/dashboard/{js,views,modals,layout}` supera las 250 líneas.
+  - Cuando una funcionalidad o vista crezca, debe dividirse obligatoriamente en submódulos cohesivos de responsabilidad única (ej: `auth.js` + `auth-otp.js`, `licenses.js` + `licenses-modals.js`, `organizations.js` + `partners-admin.js`, `multichannel.js` + `multichannel-actions.js`, `navigation.js` + `session-bootstrap.js`).
+
+---
+
+## 24. Registro Maestro de Funcionalidades y Verificación Automática E2E (`verify:features`)
+* **Documento Oficial de Especificación Funcional:**
+  - El inventario completo de endpoints, botones, motores en segundo plano, licencias protegidas (`Telkkalas`, `Suministros Rubio`, `Beta 2026 - Soy.es`) y contratos de seguridad reside en `erp-bridge/docs/FUNCTIONAL_SPECIFICATION_AND_CONTRACTS.md`.
+* **Regla Anti-415 en Peticiones `POST` / `PUT` del Agente GUI:**
+  - Como `MiniRouter` exige `Content-Type: application/json` en toda petición `POST`/`PUT` con cabecera `Origin`, queda terminantemente prohibido escribir llamadas `fetch(..., { method: 'POST' })` sin `Content-Type: application/json` en los scripts del GUI (`apps/agent/src/gui/templates/scripts/*.ts`).
+* **Verificación Obligatoria Antes de Cerrar Cualquier Tarea:**
+  - Además del Quality Gate (`pnpm run quality:check`, que incluye el **Gate 10** de contratos funcionales), se debe ejecutar `pnpm run verify:features` (`scripts/verify-functional-contracts.ts`) para comprobar estáticamente todos los contratos y verificar en vivo la salud de `https://bridge.cristianjm.com` y `https://www.suministrosrubio.com/erp-bridge-endpoint.php?action=ping`.
+
+
+
 
 
 
